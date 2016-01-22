@@ -4,7 +4,7 @@
 ;; Description: Zone out with steam locomotives
 ;; Author: KAWABATA, Taichi <kawabata.taichi_at_gmail.com>
 ;; Created: 2016-01-19
-;; Version: 1.160121
+;; Version: 1.160123
 ;; Package-Requires: ((emacs "24.3"))
 ;; Keywords: games
 ;; URL: https://github.com/kawabata/zone-sl
@@ -32,9 +32,6 @@
 ;; Or, it can be added to zone programs by using
 ;; `zone-select-add-program' of `zone-select' package.
 
-;;; TODO
-;; - make it flyable as sl "-F" option.
-
 ;;; Code:
 
 (require 'cl-lib)
@@ -45,6 +42,14 @@
   :group 'games)
 
 (defcustom zone-sl-wait 0.1 "." :group 'zone-sl)
+
+(defcustom zone-sl-trains '(zone-sl-d51-l1    zone-sl-c51-l1    zone-sl-logo-l1
+                            zone-sl-d51-l1p2  zone-sl-c51-l1p2  zone-sl-logo-l1p2
+                            zone-sl-d51-l3p10 zone-sl-c51-l3p10 zone-sl-logo-l3p10
+                            zone-sl-d51-p1l1)
+  "SL Specs." :group 'zone-sl)
+
+(defcustom zone-sl-directions '((-1 0) (-1 -0.2) (-3 0) (-3 0.6)) "SL directions." :group 'zone-sl)
 
 ;;; define smokes
 
@@ -237,14 +242,6 @@
 (defvar zone-sl-logo-l1p2  '(zone-sl-logo zone-sl-logo-tender (zone-sl-logo-passenger . 2)))
 (defvar zone-sl-logo-l3p10 '(((zone-sl-logo zone-sl-logo-tender) . 3) (zone-sl-logo-passenger . 10)))
 
-;;(defcustom zone-sl-direction '(-2 0) "Direction." :group 'zone-sl)
-(defvar zone-sl-direction '(-2 0)) ;; TODO
-(defcustom zone-sl-trains '(zone-sl-d51-l1    zone-sl-c51-l1    zone-sl-logo-l1
-                            zone-sl-d51-l1p2  zone-sl-c51-l1p2  zone-sl-logo-l1p2
-                            zone-sl-d51-l3p10 zone-sl-c51-l3p10 zone-sl-logo-l3p10
-                            zone-sl-d51-p1l1)
-  "Train Specs." :group 'zone-sl)
-
 ;;; Code
 
 (defun zone-sl-train-expand (train)
@@ -266,10 +263,6 @@
   (length
    (car (if (functionp car) (funcall car 0) (symbol-value car)))))
 
-(defun zone-sl-train-width (train)
-  "Width of TRAIN."
-  (apply '+ (mapcar 'zone-sl-car-width train)))
-
 (defun zone-sl-car-height (car)
   "Height of CAR."
   (length
@@ -288,7 +281,7 @@
                car)
       car)))
 
-(defun zone-sl-smoke-specs (train)
+(defun zone-sl-smoke-layout (train)
   "Smoke specs of TRAIN."
   (let (result
         (width 0))
@@ -298,6 +291,37 @@
         (setq width 0))
       (cl-incf width (zone-sl-car-width car)))
     (nconc result (list width))))
+
+(defun zone-sl-ascii-art (train smoke step)
+  "Generate Ascii Art of TRAIN with SMOKE at STEP."
+  (let* ((smoke-strs   (funcall smoke step))
+         (smoke-layout (zone-sl-smoke-layout train))
+         (smoke-width  (length (car smoke-strs)))
+         (train-height (zone-sl-train-height train)))
+    (append
+     ;; smoke
+     (mapcar
+      (lambda (str)
+        (concat
+         (make-string (car smoke-layout) ? )
+         (mapconcat
+          (lambda (smoke-spec)
+            (if (< smoke-spec smoke-width)
+                (substring str 0 smoke-spec)
+              (concat str (make-string (- smoke-spec smoke-width) ? ))))
+          (cdr smoke-layout) "")))
+      smoke-strs)
+     ;; train
+     (cl-loop
+      for i from 0 to (1- train-height)
+      collect
+      (mapconcat
+       (lambda (x) (elt x i))
+       (mapcar (lambda (car)
+                 (zone-sl-pad-height
+                  (if (functionp car) (funcall car step) (symbol-value car))
+                  train-height))
+               train) "")))))
 
 ;;;###autoload
 (defun zone-pgm-sl ()
@@ -310,54 +334,39 @@
      for j = 0 then (1+ j)
      for train = (zone-sl-train-expand
                   (elt zone-sl-trains (% j (length zone-sl-trains))))
-     for train-width = (zone-sl-train-width train)
-     for train-height = (zone-sl-train-height train)
-     for dx = (elt zone-sl-direction 0)
-     for dy = (elt zone-sl-direction 1)
-     for smoke-func = (if (= dy 0) 'zone-sl-smoke 'zone-sl-smoke-2)
-     for smoke = (funcall smoke-func 0)
-     for smoke-height = (length smoke)
-     for smoke-width = (length (car smoke))
-     for smoke-specs = (zone-sl-smoke-specs train)
-     for total-height = (+ train-height smoke-height)
+     for direction = (elt zone-sl-directions (% (/ j (length zone-sl-trains))
+                                                (length zone-sl-directions)))
+     for dx = (elt direction 0)
+     for dy = (elt direction 1)
+     for smoke = (if (= dy 0) 'zone-sl-smoke 'zone-sl-smoke-2)
+     for ascii-art = (zone-sl-ascii-art train smoke 0)
+     for height = (length ascii-art)
+     for width  = (length (car ascii-art))
      while (not (input-pending-p))
      do
      (zone-fill-out-screen (window-width) (window-height))
      (cl-loop
-      for x = window-width then (+ x dx)
-      for y = (random (- window-height total-height 5)) then (+ y dy)
+      for x-float = window-width then (+ x-float dx)
+      for y-float = (random (- window-height height 5)) then (+ y-float dy)
+      for x = (floor x-float)
+      for y = (floor y-float)
       for k = 0 then (1+ k)
+      for ascii-art = (zone-sl-ascii-art train smoke k)
       while (and (not (input-pending-p))
-                 (<= 0 (+ x train-width)))
-      for train-strs =  (mapcar (lambda (car)
-                               (zone-sl-pad-height
-                                (if (functionp car) (funcall car k) (symbol-value car))
-                                train-height))
-                             train)
-      for smoke-strs = (let ((smoke (funcall smoke-func k)))
-                     (mapcar
-                      (lambda (s)
-                        (concat
-                         (make-string (car smoke-specs) ? )
-                         (mapconcat
-                          (lambda (smoke-spec)
-                            (if (< smoke-spec smoke-width)
-                                (substring s 0 smoke-spec)
-                              (concat s (make-string (- smoke-spec smoke-width) ? ))))
-                          (cdr smoke-specs) "")))
-                      smoke))
+                 (<= 0 (+ x width))
+                 (<= 0 (+ y height)))
       do
       (goto-char (window-start))
-      (forward-line (floor y))
-      (dotimes (i total-height)
+      (when (< 0 y)
+        (forward-line (1- y))
         (if (< 0 x) (move-to-column x))
         (delete-region (point) (point-at-eol))
-        (let ((str   (if (< i smoke-height) (elt smoke-strs i)
-                       (mapconcat
-                        (lambda (x) (elt x (- i smoke-height))) train-strs "")))
-              (start (if (< x 0) (- x) 0))
-              (end   (if (< window-width (+ x train-width)) (- window-width x))))
-          ;;(message "k=%s length=%s train-width=%s" k (length str) train-width)
+        (forward-line))
+      (dolist (str (nthcdr (if (< y 0) (- y) 0) ascii-art))
+        (if (< 0 x) (move-to-column x))
+        (delete-region (point) (point-at-eol))
+        (let ((start (if (< x 0) (- x) 0))
+              (end   (if (< window-width (+ x width)) (- window-width x))))
           (insert (substring str start end))
           (forward-line)))
       (if (< 0 x) (move-to-column x))
