@@ -4,7 +4,7 @@
 ;; Description: Zone out with steam locomotives
 ;; Author: KAWABATA, Taichi <kawabata.taichi_at_gmail.com>
 ;; Created: 2016-01-19
-;; Version: 1.160123
+;; Version: 1.160126
 ;; Package-Requires: ((emacs "24.3"))
 ;; Keywords: games
 ;; URL: https://github.com/kawabata/zone-sl
@@ -46,10 +46,12 @@
 (defcustom zone-sl-trains '(zone-sl-d51-l1    zone-sl-c51-l1    zone-sl-logo-l1
                             zone-sl-d51-l1p2  zone-sl-c51-l1p2  zone-sl-logo-l1p2
                             zone-sl-d51-l3p10 zone-sl-c51-l3p10 zone-sl-logo-l3p10
-                            zone-sl-d51-p1l1)
+                            zone-sl-d51-p1l1  zone-sl-c51-p1l1)
   "SL Specs." :group 'zone-sl)
 
-(defcustom zone-sl-directions '((-1 0) (-1 -0.2) (-3 0) (-3 0.6)) "SL directions." :group 'zone-sl)
+(defcustom zone-sl-directions '((-1 0) (1 0) (-1 -0.2) (1 -0.2)
+                                (-3 0) (3 0) (-3 -0.6) (3 -0.6)
+                                ) "SL directions." :group 'zone-sl)
 
 ;;; define smokes
 
@@ -238,9 +240,17 @@
 (defvar zone-sl-c51-l1     '(zone-sl-c51 zone-sl-tender))
 (defvar zone-sl-c51-l1p2   '(zone-sl-c51 zone-sl-tender zone-sl-passenger zone-sl-last-passenger))
 (defvar zone-sl-c51-l3p10  '(((zone-sl-c51 zone-sl-tender) . 3) (zone-sl-passenger . 9) zone-sl-last-passenger))
+(defvar zone-sl-c51-p1l1   '(zone-sl-passenger zone-sl-c51))
 (defvar zone-sl-logo-l1    '(zone-sl-logo zone-sl-logo-tender))
 (defvar zone-sl-logo-l1p2  '(zone-sl-logo zone-sl-logo-tender (zone-sl-logo-passenger . 2)))
 (defvar zone-sl-logo-l3p10 '(((zone-sl-logo zone-sl-logo-tender) . 3) (zone-sl-logo-passenger . 10)))
+
+(defvar zone-sl-reverse-char-table
+  (let ((table (make-hash-table)))
+    (dolist (item '((?\\ . ?/) (?( . ?)) (?[ . ?])))
+      (puthash (car item) (cdr item) table)
+      (puthash (cdr item) (car item) table))
+    table))
 
 ;;; Code
 
@@ -313,7 +323,7 @@
       smoke-strs)
      ;; train
      (cl-loop
-      for i from 0 to (1- train-height)
+      for i from 0 below train-height
       collect
       (mapconcat
        (lambda (x) (elt x i))
@@ -323,6 +333,14 @@
                   train-height))
                train) "")))))
 
+(defun zone-sl-reverse-ascii-art (str)
+  "Reverse STR."
+  (apply 'string
+         (nreverse
+          (mapcar (lambda (char)
+                    (or (gethash char zone-sl-reverse-char-table) char))
+                  (string-to-list str)))))
+
 ;;;###autoload
 (defun zone-pgm-sl ()
   "Zone out with steam locomotive."
@@ -331,14 +349,14 @@
          (window-height (window-height))
          (window-width (window-width)))
     (cl-loop
-     for j = 0 then (1+ j)
+     ;;for j = (random (* (length zone-sl-trains) (length zone-sl-directions))) then (1+ j)
+     for j = 1 then (1+ j)
      for train = (zone-sl-train-expand
                   (elt zone-sl-trains (% j (length zone-sl-trains))))
-     for direction = (elt zone-sl-directions (% (/ j (length zone-sl-trains))
-                                                (length zone-sl-directions)))
+     for direction = (elt zone-sl-directions (% j (length zone-sl-directions)))
      for dx = (elt direction 0)
      for dy = (elt direction 1)
-     for smoke = (if (= dy 0) 'zone-sl-smoke 'zone-sl-smoke-2)
+     for smoke = (if (< dy 0) 'zone-sl-smoke-2 'zone-sl-smoke)
      for ascii-art = (zone-sl-ascii-art train smoke 0)
      for height = (length ascii-art)
      for width  = (length (car ascii-art))
@@ -346,32 +364,40 @@
      do
      (zone-fill-out-screen (window-width) (window-height))
      (cl-loop
-      for x-float = window-width then (+ x-float dx)
+      for x-float = (if (< 0 dx) (- width) window-width) then (+ x-float dx)
       for y-float = (random (- window-height height 5)) then (+ y-float dy)
       for x = (floor x-float)
       for y = (floor y-float)
       for k = 0 then (1+ k)
       for ascii-art = (zone-sl-ascii-art train smoke k)
       while (and (not (input-pending-p))
-                 (<= 0 (+ x width))
-                 (<= 0 (+ y height)))
+                 (<= 0 (+ x width)) (<= x window-width)
+                 (<= 0 (+ y height)) (<= y window-height))
+      for window-start = (goto-char (window-start))
       do
-      (goto-char (window-start))
-      (when (< 0 y)
-        (forward-line (1- y))
+      (if (< 0 dx) (setq ascii-art (mapcar 'zone-sl-reverse-ascii-art ascii-art)))
+      (let (rect-start rect-end)
+        (if (< 0 y) (forward-line y))
         (if (< 0 x) (move-to-column x))
-        (delete-region (point) (point-at-eol))
-        (forward-line))
-      (dolist (str (nthcdr (if (< y 0) (- y) 0) ascii-art))
-        (if (< 0 x) (move-to-column x))
-        (delete-region (point) (point-at-eol))
-        (let ((start (if (< x 0) (- x) 0))
-              (end   (if (< window-width (+ x width)) (- window-width x))))
-          (insert (substring str start end))
-          (forward-line)))
-      (if (< 0 x) (move-to-column x))
-      (delete-region (point) (point-at-eol))
-      (sit-for zone-sl-wait)))))
+        (setq rect-start (point))
+        (cl-loop
+         for i from (if (< y 0) (- y) 0) below (if (< (+ y height) window-height) height (- window-height y))
+         for str = (elt ascii-art i)
+         do
+         (let ((start (if (< x 0) (- x) 0))
+               (end   (if (< window-width (+ x width)) (- window-width x))))
+           (if (< 0 x) (move-to-column x))
+           (delete-region (point) (min (point-at-eol)
+                                       (+ (point) (- start) width (or end 0))))
+           (insert (substring str start end))
+           (setq rect-end (point))
+           (forward-line)))
+        (set-window-start (selected-window) window-start)
+        (set-window-hscroll (selected-window) 0)
+        (sit-for zone-sl-wait)
+        (if rect-end
+            (clear-rectangle rect-start rect-end))
+        )))))
 
 ;;;###autoload
 (defun zone-sl ()
