@@ -50,8 +50,8 @@
   "SL Specs." :group 'zone-sl)
 
 (defcustom zone-sl-directions '((-1 0) (1 0) (-1 -0.2) (1 -0.2)
-                                (-3 0) (3 0) (-3 -0.6) (3 -0.6)
-                                ) "SL directions." :group 'zone-sl)
+                                (-3 0) (3 0) (-3 -0.6))
+  "SL directions." :group 'zone-sl)
 
 ;;; define smokes
 
@@ -274,7 +274,7 @@
    (car (if (functionp car) (funcall car 0) (symbol-value car)))))
 
 (defun zone-sl-car-height (car)
-  "Height of CAR."
+  "Height of train CAR."
   (length
    (if (functionp car) (funcall car 0) (symbol-value car))))
 
@@ -292,7 +292,7 @@
       car)))
 
 (defun zone-sl-smoke-layout (train)
-  "Smoke specs of TRAIN."
+  "Smoke layout of TRAIN."
   (let (result
         (width 0))
     (dolist (car train)
@@ -349,8 +349,7 @@
          (window-height (window-height))
          (window-width (window-width)))
     (cl-loop
-     ;;for j = (random (* (length zone-sl-trains) (length zone-sl-directions))) then (1+ j)
-     for j = 1 then (1+ j)
+     for j = (random (* (length zone-sl-trains) (length zone-sl-directions))) then (1+ j)
      for train = (zone-sl-train-expand
                   (elt zone-sl-trains (% j (length zone-sl-trains))))
      for direction = (elt zone-sl-directions (% j (length zone-sl-directions)))
@@ -381,12 +380,13 @@
         (if (< 0 x) (move-to-column x))
         (setq rect-start (point))
         (cl-loop
-         for i from (if (< y 0) (- y) 0) below (if (< (+ y height) window-height) height (- window-height y))
+         for i from (if (< y 0) (- y) 0)
+         below (if (< (+ y height) window-height) height (- window-height y))
          for str = (elt ascii-art i)
          do
          (let ((start (if (< x 0) (- x) 0))
                (end   (if (< window-width (+ x width)) (- window-width x))))
-           (if (< 0 x) (move-to-column x))
+           (if (< 0 x) (move-to-column x t))
            (delete-region (point) (min (point-at-eol)
                                        (+ (point) (- start) width (or end 0))))
            (insert (substring str start end))
@@ -396,8 +396,7 @@
         (set-window-hscroll (selected-window) 0)
         (sit-for zone-sl-wait)
         (if rect-end
-            (clear-rectangle rect-start rect-end))
-        )))))
+            (clear-rectangle rect-start rect-end)))))))
 
 ;;;###autoload
 (defun zone-sl ()
