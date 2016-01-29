@@ -406,8 +406,8 @@
     (zone)))
 
 (defvar eshell-command-aliases-list)
-(with-eval-after-load "em-alias"
-  (add-to-list 'eshell-command-aliases-list '("sl" "zone-sl")))
+(eval-after-load "em-alias"
+  '(add-to-list 'eshell-command-aliases-list '("sl" "zone-sl")))
 
 (provide 'zone-sl)
 ;;; zone-sl.el ends here
