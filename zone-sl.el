@@ -4,7 +4,7 @@
 ;; Description: Zone out with steam locomotives
 ;; Author: KAWABATA, Taichi <kawabata.taichi_at_gmail.com>
 ;; Created: 2016-01-19
-;; Version: 1.160126
+;; Version: 1.160201
 ;; Package-Requires: ((emacs "24.3"))
 ;; Keywords: games
 ;; URL: https://github.com/kawabata/zone-sl
@@ -26,6 +26,7 @@
 
 ;; Zone out with steam locomotives.
 ;; This code is based on, and inspired by, https://github.com/mtoyoda/sl
+;; and its patches.
 ;;
 ;; It can be directly invoked by `M-x zone-sl'.
 ;;
@@ -85,6 +86,38 @@
       "          (@@@@)                                      O     @                   "
       "                                                                  O     @       "
       "        (   )                                                                  O"))
+   (% (/ k 3) 2)))
+
+(defun zone-sl-smoke-logo (k) "K."
+  (elt
+   '(("                   (@@) (  ) (@)  ( )  @@    ()    @     O     @     O      @"
+      "               (  )                                                          "
+      "           (@@@)                                                             "
+      "        (   )                                                                "
+      "                                                                             "
+      "      (@@)                                                                   ")
+     ("                   (  ) (@@) ( )  (@)  ()    @@    O     @     O     @      O"
+      "               (@@)                                                          "
+      "           (   )                                                             "
+      "        (@@@)                                                                "
+      "                                                                             "
+      "      (  )                                                                   "))
+   (% (/ k 3) 2)))
+
+(defun zone-sl-smoke-logo-2 (k) "K."
+  (elt
+   '(("                 (@@) (  )                                                 "
+      "             (  )          (@)  ( )                                        "
+      "         (@@@)                       @@    ()                              "
+      "      (   )                                      @     O                   "
+      "                                                             @     O       "
+      "    (@@)                                                                  @")
+     ("                 (  ) (@@)                                                 "
+      "             (@@)          ( )  (@)                                        "
+      "         (   )                       ()    @@                              "
+      "      (@@@)                                      O     @                   "
+      "                                                             O     @       "
+      "    (  )                                                                  O"))
    (% (/ k 3) 2)))
 
 ;;; define cars
@@ -229,8 +262,10 @@
     "_|__________________|_"
     "    (O)        (O)    "))
 
-(defvar zone-sl-locomotives '(zone-sl-d51 zone-sl-c51 zone-sl-logo)
-  "List of cars with smokes.")
+(defvar zone-sl-locomotives '((zone-sl-d51  zone-sl-smoke zone-sl-smoke-2)
+                              (zone-sl-c51  zone-sl-smoke zone-sl-smoke-2)
+                              (zone-sl-logo zone-sl-smoke-logo zone-sl-smoke-logo-2))
+  "List of locomotives and their corresponding smokes.")
 
 ;; define trains
 (defvar zone-sl-d51-l1     '(zone-sl-d51 zone-sl-tender))
@@ -296,15 +331,22 @@
   (let (result
         (width 0))
     (dolist (car train)
-      (when (memq car zone-sl-locomotives)
+      (when (assq car zone-sl-locomotives)
         (setq result (nconc result (list width)))
         (setq width 0))
       (cl-incf width (zone-sl-car-width car)))
     (nconc result (list width))))
 
-(defun zone-sl-ascii-art (train smoke step)
-  "Generate Ascii Art of TRAIN with SMOKE at STEP."
-  (let* ((smoke-strs   (funcall smoke step))
+(defun zone-sl-smoke-strs (train dy step)
+  "Find appropriate smoke strings for TRAIN going DY at STEP."
+  (while (not (assq (car train) zone-sl-locomotives)) (setq train (cdr train)))
+  (let* ((smokes (assq (car train) zone-sl-locomotives))
+         (smoke (if (< dy 0) (elt smokes 2) (elt smokes 1))))
+    (funcall smoke step)))
+
+(defun zone-sl-ascii-art (train dy step)
+  "Generate Ascii Art of TRAIN with direction DY at STEP."
+  (let* ((smoke-strs   (zone-sl-smoke-strs train dy step))
          (smoke-layout (zone-sl-smoke-layout train))
          (smoke-width  (length (car smoke-strs)))
          (train-height (zone-sl-train-height train)))
@@ -355,8 +397,7 @@
      for direction = (elt zone-sl-directions (% j (length zone-sl-directions)))
      for dx = (elt direction 0)
      for dy = (elt direction 1)
-     for smoke = (if (< dy 0) 'zone-sl-smoke-2 'zone-sl-smoke)
-     for ascii-art = (zone-sl-ascii-art train smoke 0)
+     for ascii-art = (zone-sl-ascii-art train dy 0)
      for height = (length ascii-art)
      for width  = (length (car ascii-art))
      while (not (input-pending-p))
@@ -368,7 +409,7 @@
       for x = (floor x-float)
       for y = (floor y-float)
       for k = 0 then (1+ k)
-      for ascii-art = (zone-sl-ascii-art train smoke k)
+      for ascii-art = (zone-sl-ascii-art train dy k)
       while (and (not (input-pending-p))
                  (<= 0 (+ x width)) (<= x window-width)
                  (<= 0 (+ y height)) (<= y window-height))
@@ -405,9 +446,9 @@
   (let ((zone-programs [zone-pgm-sl]))
     (zone)))
 
-(defvar eshell-command-aliases-list)
-(with-eval-after-load "em-alias"
-  (add-to-list 'eshell-command-aliases-list '("sl" "zone-sl")))
+;;(defvar eshell-command-aliases-list)
+;;(eval-after-load "em-alias"
+;;  '(add-to-list 'eshell-command-aliases-list '("sl" "zone-sl")))
 
 (provide 'zone-sl)
 ;;; zone-sl.el ends here
